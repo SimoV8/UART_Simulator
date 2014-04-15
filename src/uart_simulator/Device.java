@@ -12,24 +12,26 @@ import java.util.ArrayList;
  */
 public abstract class Device {
     protected boolean [] pins;
-    protected ArrayList<Device> components;
     protected ArrayList<Connection> connections;
-    //public final static int P_CLK   = 0;
-    //public final static int P_RESET = 1;
+    public final static int P_CLK   = 0;
+    public final static int P_RESET = 1;
+    
+    public Device(){
+        pins = null;
+        connections = new ArrayList<Connection>();
+    }
     
     public Device(int pSize){
-        pins = new boolean[pSize];
-        components = new ArrayList<Device>();
+        pins = new boolean[2+pSize];
         connections = new ArrayList<Connection>();
     }
     
     public void setPin(int index, boolean pinValue){
-        pins[index] = pinValue;
-        /*if(pins[index] != pinValue)
+        if(pins[index] != pinValue)
         {
             pins[index] = pinValue;
             update(index);
-        }*/
+        }
     }
     
     public boolean getPin(int index){
@@ -40,25 +42,31 @@ public abstract class Device {
         return pins.length;
     }
       
-    /*public boolean update(int pinId){
-        if(pinId == P_CLK && pins[pinId]){
-            clock();
-            return true;
-        }
-        if(pinId == P_RESET && pins[pinId]){
-            reset();
-            return true;
-        }
-        return false;
-    }*/
+    public void nextClock(){
+        this.setPin(P_CLK, true);
+        this.setPin(P_CLK, false);
+    }
     
-    public void reset(){}
-    
-    public void clock(){
-        for(int i=0; i < components.size(); i++)
-            components.get(i).clock();
+    protected void updateConnections(){
         for(int i=0; i < connections.size(); i++)
             connections.get(i).update();
+    }
+    
+    protected boolean update(int pinId){
+        updateConnections();
+        if(!pins[P_CLK])return false;
+        if(pinId == P_CLK)
+            clock();
+        if(pinId == P_RESET && pins[pinId])
+            reset();
+        return true;
+    }
+    
+    protected void reset(){}
+    
+    protected void clock(){
+        if(pins[P_RESET])
+            reset();
     }
     
     @Override
