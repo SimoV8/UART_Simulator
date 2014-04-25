@@ -44,7 +44,6 @@ public class FifoRegister extends Device{
     }
     
     public int getCount(){
-        System.out.println("from: "+from+" to: "+to+" => "+((to - from + fifo.size())%fifo.size()));
         return (to - from + fifo.size())%fifo.size();
     }
     
