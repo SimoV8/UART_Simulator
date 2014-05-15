@@ -33,7 +33,7 @@ public class Counter extends Device {
     }
     
     @Override
-    protected void reset(){
+    protected void reset_(){
         for(int i=P_COUNT_START; i < pins.length; i++)
                 pins[i] = false;
         currentValue = 0;
@@ -41,8 +41,8 @@ public class Counter extends Device {
     }
     
     @Override
-    protected void clock(){
-        super.clock();
+    protected void clock_(){
+        super.clock_();
         if(!pins[P_RESET])
         {
             currentValue++;

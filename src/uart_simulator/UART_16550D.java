@@ -49,6 +49,52 @@ public class UART_16550D extends Device {
     public static final int FIFO_SIZE = 16;
     public static final int REG_SIZE  = 8;
     
+    public enum RegisterAddress{
+        RBR(false,false,false,0,0),
+        THR(false,false,false,0,1),
+        IER(false,false,true),
+        IIR(false,true,false,-1,0),
+        FCR(false,true,false,-1,1),
+        LCR(false,true,true),
+        MCR(true,false,false),
+        LSR(true,false,true),
+        MSR(true,true,false),
+        Scratch(true,true,true),
+        DLLS(false,false,false,1,-1),//Divisor Latch Least Significant byte 
+        DLMS(false,false,true,1,-1); //Divisor Latch Most Significant byte
+        
+        public final boolean a0,a1,a2;
+        /*
+         * dlab: -1 => both, 0 => disabled, 1 = enabled
+         * rwMode: -1 => both, 0 => readMode, 1 = writeMode
+         */
+        public final byte dlab,rwMode;
+        
+        RegisterAddress(boolean a0,boolean a1,boolean a2){
+            this(a0, a1, a2, -1, -1);
+        }
+        
+        RegisterAddress(boolean a0,boolean a1,boolean a2,int dlab,int rwMode){
+            this.a0 = a0;
+            this.a1 = a1;
+            this.a2 = a2;
+            this.dlab = (byte) dlab;
+            this.rwMode = (byte) rwMode;
+        }
+        
+        public static RegisterAddress find(boolean a0,boolean a1,boolean a2,boolean dlab,boolean writeMode)
+        {
+            for(RegisterAddress ra : RegisterAddress.values())
+            {
+                if(ra.a0 == a0 & ra.a1 == a1 & ra.a2 == a2 &
+                  (ra.dlab<0 | ra.dlab == (dlab?1:0)) & (ra.rwMode<0 | ra.rwMode == (writeMode?1:0)))
+                    return ra;
+            }
+            return null;
+        }
+        
+    }
+    
     
     /* Line Control Register
      * bits 0-1: specify the number of bits in each transmitted or received serial character.
@@ -74,6 +120,17 @@ public class UART_16550D extends Device {
     /**
      * Bit 0: Writing a 1 to FCR0 enables both the XMIT and RCVR FIFOs 
      * Resetting FCR0 will clear all bytes in both FIFOs
+     * Bit 1: Writing a 1 to FCR1 clears all bytes in the RCVR FIFO 
+     * and resets its counter logic to 0. The shift register is not
+     * cleared. The 1 that is written to this bit position is self-clearing.
+     * Bit 2: Writing a 1 to FCR2 clears all bytes in the XMIT FIFO 
+     * and resets its counter logic to 0. The shift register is not 
+     * cleared. The 1 that is written to this bit position is self-clearing.
+     * Bit 3: Setting FCR3 to a 1 will cause the RXRDY and TXRDY pins to change 
+     * from mode 0 to mode 1 if FCR0=1 (see description of RXRDY and TXRDY pins).
+     * Bit 4, 5: FCR4 to FCR5 are reserved for future use.
+     * Bit 6, 7: FCR6 and FCR7 are used to set the trigger level for
+     * the RCVR FIFO interrupt.
      */
     final Register FCR = new Register(); //Fifo Control Register
     final Register IER = new Register(); //Interrupt Enable Register
@@ -109,7 +166,7 @@ public class UART_16550D extends Device {
         super(40);
         initConnections();
         initRegisters();
-        reset();
+        reset_();
     }
     
     private void initRegisters(){
@@ -138,34 +195,45 @@ public class UART_16550D extends Device {
         connections.add(Connection.Not(this, PN_RI, MSR, 6));
         connections.add(Connection.Not(this, PN_DCD, MSR, 7));
         
-        /*Receiver Connections*/
-        connections.add(new Connection(this,P_RCLK,RCVR,P_CLK));
-        connections.add(new Connection(this,P_SIN,RCVR,ShiftRegister.P_IN));
-        connections.add(new Connection(this,P_XIN,RCVR_FIFO,P_CLK));
-        connections.add(Connection.Not(FCR, 0, RCVR_FIFO, P_RESET));
-        
-        /*Transmitter Connections*/
-        connections.add(new Connection(this,PN_BAUDOUT,XMIT,P_CLK));
-        connections.add(new Connection(XMIT,ShiftRegister.P_LINE,this,P_SOUT));
-        connections.add(new Connection(this,P_XIN,XMIT_FIFO,P_CLK));
-        connections.add(Connection.Not(FCR, 0, XMIT_FIFO, P_RESET));
-        XMIT.setPin(ShiftRegister.P_IN,true);//When UART doesn't transmit anything, the line holds an high value
-        
-        for(int i=0;i<XMIT_FIFO.getRegisterSize();i++)
-            connections.add(new Connection(XMIT_FIFO,XMIT_FIFO.P_O_START+i,XMIT,ShiftRegister.P_INPUT_START+i));
-        
         /*BaudGenerator Connections*/
         connections.add(new Connection(this,P_XIN,baudGenerator,P_CLK));
         connections.add(new Connection(this,P_MR,baudGenerator,P_RESET));
         connections.add(Connection.Not(baudGenerator,BaudGenerator.P_BAUDOUT,this,PN_BAUDOUT));
         
+        /*Receiver Connections*/
+        connections.add(new Connection(this,P_RCLK,RCVR,P_CLK));
+        connections.add(new Connection(this,P_MR,XMIT,P_RESET));
+        connections.add(new Connection(this,P_SIN,RCVR,ShiftRegister.P_IN));
+        connections.add(new Connection(this,P_XIN,RCVR_FIFO,P_CLK));
+        connections.add(new Connection(this, P_MR, RCVR_FIFO, P_RESET));
+        
+        /*Transmitter Connections*/
+        connections.add(new Connection(baudGenerator,BaudGenerator.P_BAUDOUT,XMIT,P_CLK));
+        connections.add(new Connection(this,P_MR,XMIT,P_RESET));
+        connections.add(new Connection(XMIT,ShiftRegister.P_LINE,this,P_SOUT));
+        connections.add(new Connection(this,P_XIN,XMIT_FIFO,P_CLK));
+        connections.add(new Connection(this, P_MR, XMIT_FIFO, P_RESET));
+        XMIT.setPin(ShiftRegister.P_IN,true);//When UART doesn't transmit anything, the line holds an high value
+        
+        //for(int i=0;i<XMIT_FIFO.getRegisterSize();i++)
+        //    connections.add(new Connection(XMIT_FIFO,XMIT_FIFO.P_O_START+i,XMIT,ShiftRegister.P_INPUT_START+i));
+        
     } //End initConnections()
     
     @Override
-    public final void reset(){
+    public final void reset_(){
         MSR.setValue(new boolean[]{false,false,false,false});
         LSR.reset(false);
         rcvrFifoErrorCounter = 0;
+        transmissionEnabled = false;
+        receptionEnabled = false;
+        for(int i=ShiftRegister.P_INPUT_START; i < XMIT.getPinCount(); ++i)
+            XMIT.setPin(i, true);
+        XMIT.setPin(ShiftRegister.P_LINE, true);
+        XMIT.reset_();
+        for(int i=ShiftRegister.P_INPUT_START; i < XMIT.getPinCount(); ++i)
+            RCVR.setPin(i, true);
+        RCVR.reset_();
         pins[P_SOUT] = true;
         pins[P_INTR] = false;
         pins[PN_RTS] = true;
@@ -173,31 +241,37 @@ public class UART_16550D extends Device {
         pins[PN_OUT1]= true;
         pins[PN_OUT2]= true;
         
-        characterLength = 5 + (LSR.getPin(0)?1:0)*2 + (LSR.getPin(1)?1:0);
-        stopLength = LSR.getPin(2)?2:1;
+        pins[PN_DSR] = true;
+        pins[PN_CTS] = true;
+        pins[PN_DCD] = true;
+        pins[PN_RI]  = true;
+        pins[P_SIN] = true;
         
-        parityEnable= LSR.getPin(3);
-        evenParitySelect = LSR.getPin(4);
-        stickParity = LSR.getPin(5);
+        characterLength = 5 + (LCR.getPin(0)?1:0)*2 + (LCR.getPin(1)?1:0);
+        stopLength = LCR.getPin(2)?2:1;
+        
+        parityEnable= LCR.getPin(3);
+        evenParitySelect = LCR.getPin(4);
+        stickParity = LCR.getPin(5);
         RCVR.setMaxSize(1/*start bit*/+characterLength+stopLength+(parityEnable?1:0));
         XMIT.setMaxSize(1/*start bit*/+characterLength+stopLength+(parityEnable?1:0));     
     }
     
     @Override
-    public boolean update(int pinId){
-        if(!super.update(pinId))return false;
+    public boolean update_(int pinId){
+        if(!super.update_(pinId))return false;
         if(LCR.getPin(6)/*Break Control bit*/)pins[P_SOUT] = false;
         return true;
     }
     
      @Override
-     public void clock(){
+     public void clock_(){
         pins[P_DDIS] = !isReadMode();
         updateRegisters();
         receiverControlLogic();
         transmitterControlLogic();
         interruptControlLogic();
-        super.clock();
+        super.clock_();
      }
     
     protected void updateRegisters(){
@@ -212,28 +286,45 @@ public class UART_16550D extends Device {
     }
     
     protected boolean[] readRegister(){
-        boolean[] value = null;
-        boolean a0 = pins[P_A0],a1 = pins[P_A1],a2 = pins[P_A2];
-        if(!a0 && !a1 && !a2){
-            if(!LSR.getPin(7)/*DLAB*/) value = readReceiverBuffer();
-            else value = baudGenerator.getDivisorLatchLeastSignificantByte();
-        }
-        if(!a0 && !a1 && a2)  {
-            if(!LSR.getPin(7)/*DLAB*/) value = IER.getValue();
-            else value = baudGenerator.getDivisorLatchLeastSignificantByte();
-        }
-        if(!a0 && a1 && !a2)  value = IIR.getValue();
-        if(!a0 &&  a1 &&  a2) value = LCR.getValue();
-        if( a0 && !a1 && !a2) {
-            value = MCR.getValue();
-            MCR.setValue(new boolean[]{false,false,false,false}, 0);
-        }
-        if( a0 && !a1 &&  a2) {
-            value = LSR.getValue();
-            LSR.setValue(new boolean[]{false,false,false,false}, 0);
-        }
-        if( a0 &&  a1 && !a2) value = MSR.getValue();
-        if( a0 &&  a1 &&  a2) value =scratchpad.getValue();
+        System.out.println("READ REGISTER");
+        boolean[] value;
+        RegisterAddress add = RegisterAddress.find(pins[P_A0],pins[P_A1],pins[P_A2],LCR.getPin(7)/*DLAB*/,false/*Write Mode*/);
+        switch(add){
+            case RBR:
+                value= readReceiverBuffer();
+                break;
+            case DLLS:
+                value = baudGenerator.getDivisorLatchLeastSignificantByte();
+                break;
+            case DLMS:
+                value = baudGenerator.getDivisorLatchMostSignificantByte();
+                break;
+            case IER:
+                value = IER.getValue();
+                break;
+            case IIR:
+                value = IIR.getValue();
+                break;
+            case LCR:
+                value = LCR.getValue();
+                break;
+            case LSR:
+                value = LSR.getValue();
+                LSR.setValue(new boolean[]{false,false,false,false}, 0);
+                break;
+            case MCR:
+                value = MCR.getValue();
+                break;
+            case MSR:
+                value = MSR.getValue();
+                MSR.setValue(new boolean[]{false,false,false,false});
+                break;
+            case Scratch:
+                value = scratchpad.getValue();
+                break;
+            default:
+                value = new boolean[REG_SIZE];
+        }        
         return value;
     }
     
@@ -271,20 +362,39 @@ public class UART_16550D extends Device {
     
     protected void writeRegister(boolean[] value){
         boolean a0 = pins[P_A0],a1 = pins[P_A1],a2 = pins[P_A2];
-        if(!a0 && !a1 && !a2){
-            if(!LSR.getPin(7)/*DLAB*/) writeTransmitterRegister(value);
-            else baudGenerator.setDivisorLatchLeastSignificantByte(value);
+        RegisterAddress add = RegisterAddress.find(pins[P_A0],pins[P_A1],pins[P_A2],LCR.getPin(7)/*DLAB*/,true/*Write mode*/);
+        switch(add){
+            case THR: 
+                writeTransmitterRegister(value);
+                break;
+            case DLLS:
+                baudGenerator.setDivisorLatchLeastSignificantByte(value);
+                break;
+            case DLMS:
+                baudGenerator.setDivisorLatchMostSignificantByte(value);
+                break;
+            case IER:
+                IER.setValue(value);
+                break;
+            case FCR:
+                writeFifoControlRegister(value);
+                break;
+            case LCR:
+                LCR.setValue(value);
+                break;
+            case LSR:
+                LSR.setValue(value);
+                break;
+            case MCR:
+                MCR.setValue(value);
+                break;
+            case MSR:
+                MSR.setValue(value);
+                break;
+            case Scratch:
+                scratchpad.setValue(value);
+                break;
         }
-        if(!a0 && !a1 && a2){
-            if(!LSR.getPin(7)/*DLAB*/) IER.setValue(value);
-            else baudGenerator.setDivisorLatchLeastSignificantByte(value);
-        }
-        if(!a0 &&  a1 && !a2) writeFifoControlRegister(value);
-        if(!a0 &&  a1 &&  a2) LCR.setValue(value);
-        if( a0 && !a1 && !a2) MCR.setValue(value);
-        if( a0 && !a1 &&  a2) LSR.setValue(value);
-        if( a0 &&  a1 && !a2) MSR.setValue(value);
-        if( a0 &&  a1 &&  a2) scratchpad.setValue(value);
     }
     
     protected void writeFifoControlRegister(boolean[] value){
@@ -296,14 +406,14 @@ public class UART_16550D extends Device {
         }
         if(FCR.getPin(1)){
             FCR.setPin(1, false);
-            RCVR_FIFO.reset();
+            RCVR_FIFO.reset_();
             rcvrFifoErrorCounter = 0;
             LSR.setPin(0/*Data Ready*/, false);
             pins[PN_RXRDY] = true;
         }
         if(FCR.getPin(2)){
             FCR.setPin(2, false);
-            XMIT_FIFO.reset();
+            XMIT_FIFO.reset_();
             LSR.setPin(5/*Transmitter Holding Register Empty*/, false);
             pins[PN_TXRDY] = true;
         }
@@ -339,36 +449,27 @@ public class UART_16550D extends Device {
     }
     
     private void receiverControlLogic(){
-         if(RCVR.getPin(ShiftRegister.P_IS_EMPTY))
+         if(RCVR.getPin(ShiftRegister.P_IS_EMPTY) && receptionEnabled)
          {
             manageReceiverShiftRegister();
             receptionEnabled = false;
          }
-         if(pins[P_RCLK])
+         if(pins[P_RCLK] && !receptionEnabled && !pins[P_SIN])
          {
-             if(!receptionEnabled && pins[P_SIN])
-                 RCVR.reset();
-             else
-                 receptionEnabled = true;
+           RCVR.setPin(P_RESET, true);
+           RCVR.setPin(P_RESET, false);
+           RCVR.nextClock();
+           receptionEnabled = true;
          }
          LSR.setPin(7/*Errors in the fifo*/, rcvrFifoErrorCounter!=0);
     }
     
     private void transmitterControlLogic(){
-        if(XMIT.getPin(ShiftRegister.P_IS_EMPTY))
-        {
+        if(XMIT.getPin(ShiftRegister.P_IS_EMPTY) && MSR.getPin(4/*Clear to Send*/) 
+                && baudGenerator.getPin(BaudGenerator.P_BAUDOUT)){
             manageTransmitterShiftRegister();
-            transmissionEnabled = false;
-        }
-        if(!transmissionEnabled){
-            if(MSR.getPin(4/*Clear to Send*/) && !XMIT.getPin(ShiftRegister.P_IS_EMPTY))
-                transmissionEnabled = true;
-            else
-            {
-                XMIT.reset();
-                pins[P_SOUT] = true; //Force the output to be logic 1.
-            }
-        }
+        }        
+        transmissionEnabled = MSR.getPin(4/*Clear to Send*/) && !LSR.getPin(6/*Transmitter Empty*/);
     }
     
     private void manageReceiverShiftRegister(){
@@ -378,7 +479,7 @@ public class UART_16550D extends Device {
        int index = rcvr.length - RCVR.getMaxSize();    
        for(int i=index; i<rcvr.length;i++)
            breakInterrupt |= rcvr[i];
-       
+       index++;//I ignore the start bit
        System.arraycopy(rcvr, index, character, 0, characterLength);
        index+=characterLength;
        if(parityEnable){
@@ -418,7 +519,7 @@ public class UART_16550D extends Device {
            pins[PN_RXRDY] = false;
        }
        LSR.setPin(0/*Data Ready*/, true);
-       RCVR.reset();
+       RCVR.reset_();
     }
            
     private void manageTransmitterShiftRegister(){
@@ -450,9 +551,9 @@ public class UART_16550D extends Device {
         }
         if(parityEnable)
             XMIT.setPin(index++, parity^evenParitySelect);
-        for(;index<XMIT.getPinCount();++index)
-            XMIT.setPin(index, true);
-        XMIT.reset();
+        for(int i=0; i < stopLength; ++i)
+            XMIT.setPin(index++, true);
+        XMIT.reset_();
         LSR.setPin(6/*Transmitter Empty*/, false);
     }   
     
@@ -489,6 +590,19 @@ public class UART_16550D extends Device {
                     | (interrupts[1]&IER.getPin(0)) //Received Data Available Interrupt Enabled
                     | (interrupts[2]&IER.getPin(1)) //Transmitter Holding Register Empty Interrupt Enabled
                     | (interrupts[3]&IER.getPin(0));//MODEM Status Interrupt Enabled
+    }
+    
+    @Override
+    public String toString(){
+        String s = "UART_16550D\tcs: "+isChipSelected()+"\tr: "+isReadMode()+"\tw: "+isWriteMode();
+        s+="\nLCR: "+LCR+"\tLSR: "+LSR+"\tFCR: "+FCR+"\tIER: "+IER+"\tIIR: "+IIR;
+        s+="\nMSR: "+MSR+"\tMCR: "+MCR+"\t RBR: "+RBR+"\tTHR: "+THR;
+        s+="\n"+baudGenerator;
+        s+="\n Reception Enabled: "+receptionEnabled+"\tTransmission Enabled:"+transmissionEnabled;
+        s+="\nRCVR: "+RCVR+"\nRCVR_FIFO: "+RCVR_FIFO;
+        s+="\nXMIT: "+XMIT+"\nXMIT_FIFO: "+XMIT_FIFO;
+        s+="\n";
+        return s;
     }
     
 }

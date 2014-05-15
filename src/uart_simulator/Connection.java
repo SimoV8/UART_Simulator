@@ -63,7 +63,8 @@ public class Connection {
         return new Connection(fromDev, fromPin, toDev, toPin){
                 @Override
                 protected void update(Device fromDev, int fromPin, Device toDev, int toPin){
-                    toDev.setPin(toPin, !fromDev.getPin(fromPin));
+                    boolean value = fromDev.getPin(fromPin);
+                    toDev.setPin(toPin, !value);
                 }   
         }; 
     }
@@ -73,7 +74,7 @@ public class Connection {
                 boolean previousValue = false;
                 @Override
                 protected void update(Device fromDev, int fromPin, Device toDev, int toPin){
-                    if(previousValue != fromDev.getPin(toPin)){
+                    if(previousValue != fromDev.getPin(fromPin)){
                         previousValue = fromDev.getPin(toPin);
                         toDev.setPin(toPin, true);
                     }

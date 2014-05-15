@@ -48,7 +48,7 @@ public class FifoRegister extends Device{
     }
     
     @Override
-    protected void reset(){
+    protected void reset_(){
         pins[P_IS_EMPTY] = true;
         pins[P_IS_FULL]  = false;
         from = 0; 
@@ -56,8 +56,8 @@ public class FifoRegister extends Device{
     }
     
     @Override
-    protected boolean update(int pinId){
-        if(!super.update(pinId))return false;
+    protected boolean update_(int pinId){
+        if(!super.update_(pinId))return false;
         if(pins[P_READ]){
            boolean out[] = readRegister();
            System.arraycopy(out, 0, pins, P_O_START, out.length);

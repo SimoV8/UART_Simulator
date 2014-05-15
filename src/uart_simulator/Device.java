@@ -30,7 +30,7 @@ public abstract class Device {
         if(pins[index] != pinValue)
         {
             pins[index] = pinValue;
-            update(index);
+            update_(index);
         }
     }
     
@@ -47,26 +47,27 @@ public abstract class Device {
         this.setPin(P_CLK, false);
     }
     
+    
     protected void updateConnections(){
         for(int i=0; i < connections.size(); i++)
             connections.get(i).update();
     }
     
-    protected boolean update(int pinId){
+    protected boolean update_(int pinId){
         updateConnections();
         if(!pins[P_CLK])return false;
         if(pinId == P_CLK)
-            clock();
+            clock_();
         if(pinId == P_RESET && pins[pinId])
-            reset();
+            reset_();
         return true;
     }
     
-    protected void reset(){}
+    protected void reset_(){}
     
-    protected void clock(){
+    protected void clock_(){
         if(pins[P_RESET])
-            reset();
+            reset_();
     }
     
     @Override

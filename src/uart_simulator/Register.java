@@ -26,10 +26,12 @@ public class Register extends Device{
     }
          
     @Override
-    protected boolean update(int pinId){return true;}
+    protected boolean update_(int pinId){return true;}
     
     public boolean[] getValue(){
-        return pins;
+        boolean[] value = new boolean[getSize()];
+        System.arraycopy(pins, 0, value, 0, getSize());
+        return value;
     }
     
     public boolean[] getValue(int offset,int length){
@@ -48,6 +50,14 @@ public class Register extends Device{
     
     public int getSize(){
         return pins.length;
+    }
+    
+    @Override
+    public String toString(){
+        String s = new String();
+        for(int i=0;i<pins.length;i++)
+            s +=(pins[i]?"1":"0");
+        return s;
     }
     
 }

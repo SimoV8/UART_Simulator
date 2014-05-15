@@ -20,18 +20,11 @@ public class ShiftRegister extends Device {
     public ShiftRegister(int size){
         super(size + 4);
         counter = new Counter(size);
-        Connection c1 = new Connection(this,P_RESET,counter,P_RESET);
-        Connection c2 = new Connection(this,P_CLK,counter,P_CLK);
-        
+        //Connection c1 = new Connection(this,P_RESET,counter,P_RESET);
+        Connection c2 = new Connection(this,P_CLK,counter,P_CLK);   
         connections.add(c2);
-        connections.add(c1);
-        //connections.add(c3);
+        //connections.add(c1);
         register = new Register(size+1);
-        connections.add(new Connection(register,0,this,P_LINE));
-        for(int i=1;i<register.getPinCount();i++)
-            connections.add(new Connection(register,i,register,i-1));
-        
-        pins[P_IN] = true;
     }
     
     public void setMaxSize(int count){
@@ -53,18 +46,22 @@ public class ShiftRegister extends Device {
     public Register getRegister(){
         return register;
     }
-    
+        
     @Override
-    protected void reset(){
-        for(int i=P_INPUT_START;i < register.getPinCount(); i++)
-            register.setPin(i, pins[i]);
+    protected void reset_(){
+        counter.reset_();
+        for(int i=0; i < register.getPinCount(); i++)
+            register.setPin(i, pins[P_INPUT_START+i]);
         pins[P_IS_EMPTY] = false;
     }
     
     @Override
-    protected void clock(){
-        register.setPin(register.getPinCount()-1, pins[P_IN]);     
-        super.clock();
+    protected void clock_(){
+        pins[P_LINE] = register.getPin(0);
+         for(int i=1;i<register.getPinCount();i++)
+             register.setPin(i-1, register.getPin(i));
+        register.setPin(register.getPinCount()-1, pins[P_IN]);
+        super.clock_();
         pins[P_IS_EMPTY] = pins[P_IS_EMPTY] || counter.getPin(Counter.P_CARRY);
     }
     
@@ -72,7 +69,7 @@ public class ShiftRegister extends Device {
     public String toString(){
         String s = "Line:"+(pins[P_LINE]?"1":"0")+" Reset:"+(pins[P_RESET]?"1":"0")
                 +" IsEmpty: "+(pins[P_IS_EMPTY]?"1":"0");
-        s+="\n"+counter.toString();
+        s+=" "+counter.toString()+" reg: "+register;
         return s;
     }
     
