@@ -31,19 +31,21 @@ public class Main {
         sr.setPin(Device.P_RESET, true);
         for(int i= ShiftRegister.P_INPUT_START; i < sr.getPinCount();i++)
             sr.setPin(i, false);
-        sr.setPin(2, true);
-        sr.setPin(4, true);
+        sr.setPin(ShiftRegister.P_INPUT_START+2, true);
+        sr.setPin(ShiftRegister.P_INPUT_START+4, true);
         //sr.setPin(7, true);
         sr.nextClock();
         System.out.println(sr);
-        sr.setPin(Device.P_RESET, false);
         for(int i=0;i < 15;i++)
         {
-            sr.nextClock();
+            sr.setPin(ShiftRegister.P_RESET, false);
+            sr.setPin(Device.P_CLK, true);
+            sr.setPin(ShiftRegister.P_IN, i%2 == 0);
             if(i==10){//sr.getPin(ShiftRegister.P_IS_EMPTY)){
-                sr.setPin(ShiftRegister.P_INPUT_START,false);
+                sr.setPin(ShiftRegister.P_INPUT_START,true);
                 sr.setPin(ShiftRegister.P_RESET, true);
             }
+            sr.setPin(Device.P_CLK, false);
             System.out.println(sr);
             
         }
@@ -116,8 +118,6 @@ public class Main {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-       UART_16550D uart = new UART_16550D();
-       //testBaudGenerator();
-       testFifoRegister();
+        testShiftRegister();
     }
 }
