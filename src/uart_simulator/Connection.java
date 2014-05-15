@@ -75,7 +75,7 @@ public class Connection {
                 @Override
                 protected void update(Device fromDev, int fromPin, Device toDev, int toPin){
                     if(previousValue != fromDev.getPin(fromPin)){
-                        previousValue = fromDev.getPin(toPin);
+                        previousValue = fromDev.getPin(fromPin);
                         toDev.setPin(toPin, true);
                     }
                 }   
