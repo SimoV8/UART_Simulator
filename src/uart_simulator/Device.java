@@ -53,12 +53,12 @@ public abstract class Device {
             connections.get(i).update();
     }
     
-    protected boolean update_(int pinId){
+    protected boolean update_(int pinIndex){
         updateConnections();
         if(!pins[P_CLK])return false;
-        if(pinId == P_CLK)
+        if(pinIndex == P_CLK)
             clock_();
-        if(pinId == P_RESET && pins[pinId])
+        if(pinIndex == P_RESET && pins[pinIndex])
             reset_();
         return true;
     }
